@@ -23,7 +23,8 @@
         playerMoveTimer = 0,
         playerCollision = false,
         entityAnimFrame = 0,
-        entityAnimTimer = 0;
+        entityAnimTimer = 0,
+        inventory       = {screw: 0, key: 0, ammo: 0};
 
     var levels = [
         {
@@ -31,7 +32,7 @@
             entities: {
                 player: [
                 //    {x: 3, y: 3, d: 'down', p: true} // d = direction, p = player
-                    {x: 6, y: 3, d: 'down', p: true}
+                    {x: 3, y: 3, d: 'down', p: true}
                 ],
                 wall: [
                     {x: 1, y: 1},
@@ -122,17 +123,25 @@
                     {x: 10, y: 2},
                     {x: 7, y: 8}
                 ],
+                key: [
+//                    {x: 4, y: 2},
+//                    {x: 4, y: 3}
+                ],
                 bomb: [
                     {x: 2, y: 9}
                 ],
                 crate: [
                     {x: 3, y: 5},
-                    {x: 8, y: 4},
+                    {x: 8, y: 5},
                     {x: 8, y: 8}
                 ],
                 teleport: [
                     {x: 7, y: 3, i: 1, t: 2}, // i = identifier, t = target
-                    {x: 15, y: 2, i: 2, t: 1} // bylo x: 14
+                    {x: 14, y: 3, i: 2, t: 1}
+                ],
+                door: [
+//                    {x: 4, y: 4, o: true},
+//                    {x: 5, y: 8, o: true}
                 ]
             }
         }
@@ -172,6 +181,7 @@
                 switch (entity) {
                     case 'wall':
                     case 'rubble':
+                    case 'door':
                         collidable[collidable.length] = entities[entity][i];
                         break;
 
@@ -182,6 +192,7 @@
 
                     case 'ammo':
                     case 'screw':
+                    case 'key':
                         collectable[collectable.length] = entities[entity][i];
                         break;
 
@@ -263,6 +274,11 @@
                 offset.y = 5;
                 break;
 
+            case 'key':
+                offset.x = 1;
+                offset.y = 6;
+                break;
+
             case 'bomb':
                 offset.x = 2;
                 offset.y = 8;
@@ -276,6 +292,11 @@
             case 'teleport':
                 offset.x = 1;
                 offset.y = 15;
+                break;
+
+            case 'door':
+                offset.x = 1;
+                offset.y = 8;
                 break;
 
             case 'smokeStart':
@@ -429,7 +450,8 @@
             interaction = false,
             nextEntity = null,
             collectedEntity = null,
-            enteredEntity = null;
+            enteredEntity = null,
+            openedEntity = null;
 
         if (inArray(moverPredictedPosition, collidable)) {
             interaction = 'collision';
@@ -490,7 +512,6 @@
                 for (var i = 0; i < entities.ammo.length; i++) {
                     if (collectedEntity.x === entities.ammo[i].x && collectedEntity.y === entities.ammo[i].y) {
                         entities.ammo.splice(i, 1);
-                        collectable.splice(i, 1);
 
                         playSound('ammo');
                     }
@@ -501,6 +522,15 @@
                         entities.screw.splice(i, 1);
 
                         playSound('screw');
+                    }
+                }
+
+                for (var i = 0; i < entities.key.length; i++) {
+                    if (collectedEntity.x === entities.key[i].x && collectedEntity.y === entities.key[i].y) {
+                        entities.key.splice(i, 1);
+                        inventory.key++;
+
+                        playSound('key');
                     }
                 }
 
@@ -532,6 +562,30 @@
             }
         }
 
+        if (openedEntity = inArray(moverPredictedPosition, collidable)) {
+            if (mover.p && inventory.key && openedEntity.o) {
+                for (var i = 0; i < entities.door.length; i++) {
+                    if (openedEntity.x === entities.door[i].x && openedEntity.y === entities.door[i].y) {
+                        entities.door.splice(i, 1);
+                    }
+                }
+
+                for (var i = 0; i < collidable.length; i++) {
+                    if (openedEntity.x === collidable[i].x && openedEntity.y === collidable[i].y) {
+                        collidable.splice(i, 1);
+                    }
+                }
+
+                playSound('door');
+
+                inventory.key--;
+                interaction = 'open';
+            }
+            else {
+                interaction = 'collision';
+            }
+        }
+
         return interaction;
     }
 
@@ -548,7 +602,6 @@
     }
 
     function performTeleport(enteredEntity, direction) {
-        console.log(direction)
         var target = null,
             arrivalPlace = {},
             smokeStartEntity = {
