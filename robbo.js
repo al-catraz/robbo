@@ -14,11 +14,13 @@
         repeatRateTimer = null,
         level           = null,
         controlsEnabled = true,
+        shiftPressed    = false,
         entities        = [],
         collidable      = [],
         movable         = [],
         collectable     = [],
         enterable       = [],
+        shootable       = [],
         playerMoveFrame = 0,
         playerMoveTimer = 0,
         playerCollision = false,
@@ -175,6 +177,8 @@
         entities = level.entities;
         entities.smokeStart = [];
         entities.smokeEnd = [];
+        entities.shotX = [];
+        entities.shotY = [];
 
         for (var entity in entities) {
             for (var i = 0; i < entities[entity].length; i++) {
@@ -185,14 +189,22 @@
                         collidable[collidable.length] = entities[entity][i];
                         break;
 
-                    case 'bomb':
                     case 'crate':
                         movable[movable.length] = entities[entity][i];
                         break;
 
-                    case 'ammo':
+                    case 'bomb':
+                        shootable[shootable.length] = entities[entity][i];
+                        movable[movable.length] = entities[entity][i];
+                        break;
+
                     case 'screw':
                     case 'key':
+                        collectable[collectable.length] = entities[entity][i];
+                        break;
+
+                    case 'ammo':
+                        shootable[shootable.length] = entities[entity][i];
                         collectable[collectable.length] = entities[entity][i];
                         break;
 
@@ -226,7 +238,8 @@
 	}
 
 	function drawEntity(entity, type) {
-        var offset = {};
+        var offset = {},
+            interaction = null;
 
         switch (type) {
             case 'player':
@@ -308,6 +321,16 @@
                 offset.x = 4;
                 offset.y = 12;
                 break;
+
+            case 'shotX':
+                offset.x = 1;
+                offset.y = 13;
+                break;
+
+            case 'shotY':
+                offset.x = 1;
+                offset.y = 14;
+                break;
         }
 
         if (type === 'player') {
@@ -330,15 +353,12 @@
             }
         }
         else if (type === 'teleport') {
-            entityAnimTimer++;
-
             if (entityAnimTimer === 6) {
                 entityAnimTimer = 0;
-                entityAnimFrame = !entityAnimFrame;
                 offset.x = offset.x + entityAnimFrame;
             }
             else {
-                offset.x = offset.x + !entityAnimFrame;
+                offset.x = offset.x + entityAnimFrame;
             }
 
             drawImage(offset.x - 1, offset.y, entity.x, entity.y);
@@ -387,8 +407,65 @@
 
             entity.f--;
         }
+        else if (type === 'shotX' || type === 'shotY') {
+            interaction = detectInteraction(entity);
+            offset.x = offset.x + entityAnimFrame;
+
+            if (type === 'shotY') {
+                switch (entity.d) {
+                    case 'up':
+                        entity.y -= 1;
+                        break;
+
+                    case 'down':
+                        entity.y += 1;
+                        break;
+                }
+            }
+
+            if (type === 'shotX') {
+                switch (entity.d) {
+                    case 'left':
+                        entity.x -= 1;
+                        break;
+
+                    case 'right':
+                        entity.x += 1;
+                        break;
+                }
+            }
+
+
+            if (interaction === 'collision' || interaction === 'shot') {
+                for (var i = 0; i < entities[type].length; i++) {
+                    if (entity.x === entities[type][i].x && entity.y === entities[type][i].y) {
+                        entities[type].splice(i, 1);
+                    }
+                }
+
+                for (var i = 0; i < shootable.length; i++) {
+                    if (entity.x === shootable[i].x && entity.y === shootable[i].y) {
+                        collidable.splice(i, 1);
+                    }
+                }
+
+                if (interaction === 'shot') {
+                    performShotSmoke(entity);
+                }
+            }
+            else {
+                drawImage(offset.x - 1, offset.y, entity.x, entity.y);
+            }
+        }
         else {
             drawImage(offset.x - 1, offset.y, entity.x, entity.y);
+        }
+
+        entityAnimTimer++;
+
+        if (entityAnimTimer === repeatRate * 3) {
+            entityAnimTimer = 0;
+            entityAnimFrame = entityAnimFrame ? 0 : 1;
         }
 	}
 
@@ -448,75 +525,108 @@
     function detectInteraction(mover) {
         var moverPredictedPosition = getPredictedPosition(mover),
             interaction = false,
-            nextEntity = null,
+            movedEntity = null,
             collectedEntity = null,
             enteredEntity = null,
-            openedEntity = null;
+            openedEntity = null,
+            shootedEntity = null;
 
-        if (inArray(moverPredictedPosition, collidable)) {
-            interaction = 'collision';
+        // monsters & movable lasers
+        if (!mover.p && !mover.s) {
+            if (inArray(moverPredictedPosition, collidable) || inArray(moverPredictedPosition, movable)) { // look out for a bomb entity!
+                interaction = 'collision';
+            }
+        }
+        else {
+            // shot
+            if (mover.s) {
+                if (inArray(moverPredictedPosition, collidable) || (inArray(moverPredictedPosition, movable) && !inArray(moverPredictedPosition, shootable))) { // look out for a bomb entity!
+                    interaction = 'collision';
+                }
+
+                if (inArray(moverPredictedPosition, shootable)) {
+                    interaction = 'shot';
+                }
+            }
+
+            // player
+            if (mover.p) {
+                if (inArray(moverPredictedPosition, collidable)) {
+                    interaction = 'collision';
+                }
+
+                if (inArray(moverPredictedPosition, movable) && shiftPressed) {
+                    interaction = 'collision';
+                }
+            }
         }
 
-        if (nextEntity = inArray(moverPredictedPosition, movable)) {
-            nextEntity.d = entities.player[0].d;
+        if (movedEntity = inArray(moverPredictedPosition, movable)) {
+            // if shift is pressed then player shouldn't cause entity move
+            if (mover.p && !shiftPressed) {
+                movedEntity.d = entities.player[0].d;
 
-            switch (nextEntity.d) {
-                case 'up':
-                    if (detectInteraction(nextEntity) !== 'collision') {
-                        nextEntity.y -= 1;
-                        interaction = 'move';
-                    }
-                    else {
-                        interaction = 'collision';
-                    }
+                switch (movedEntity.d) {
+                    case 'up':
+                        if (detectInteraction(movedEntity) !== 'collision') {
+                            movedEntity.y -= 1;
+                            interaction = 'move';
+                        }
+                        else {
+                            interaction = 'collision';
+                        }
 
-                    break;
+                        break;
 
-                case 'down':
-                    if (detectInteraction(nextEntity) !== 'collision') {
-                        nextEntity.y += 1;
-                        interaction = 'move';
-                    }
-                    else {
-                        interaction = 'collision';
-                    }
+                    case 'down':
+                        if (detectInteraction(movedEntity) !== 'collision') {
+                            movedEntity.y += 1;
+                            interaction = 'move';
+                        }
+                        else {
+                            interaction = 'collision';
+                        }
 
-                    break;
+                        break;
 
-                case 'left':
-                    if (detectInteraction(nextEntity) !== 'collision') {
-                        nextEntity.x -= 1;
-                        interaction = 'move';
-                    }
-                    else {
-                        interaction = 'collision';
-                    }
+                    case 'left':
+                        if (detectInteraction(movedEntity) !== 'collision') {
+                            movedEntity.x -= 1;
+                            interaction = 'move';
+                        }
+                        else {
+                            interaction = 'collision';
+                        }
 
-                    break;
+                        break;
 
-                case 'right':
-                    if (detectInteraction(nextEntity) !== 'collision') {
-                        nextEntity.x += 1;
-                        interaction = 'move';
-                    }
-                    else {
-                        interaction = 'collision';
-                    }
+                    case 'right':
+                        if (detectInteraction(movedEntity) !== 'collision') {
+                            movedEntity.x += 1;
+                            interaction = 'move';
+                        }
+                        else {
+                            interaction = 'collision';
+                        }
 
-                    break;
+                        break;
+                }
             }
         }
 
         if (collectedEntity = inArray(moverPredictedPosition, collectable)) {
             if (mover.p) {
+                // ammo
                 for (var i = 0; i < entities.ammo.length; i++) {
                     if (collectedEntity.x === entities.ammo[i].x && collectedEntity.y === entities.ammo[i].y) {
                         entities.ammo.splice(i, 1);
+                        inventory.ammo += 8;
 
                         playSound('ammo');
                     }
                 }
 
+                // screw
                 for (var i = 0; i < entities.screw.length; i++) {
                     if (collectedEntity.x === entities.screw[i].x && collectedEntity.y === entities.screw[i].y) {
                         entities.screw.splice(i, 1);
@@ -525,6 +635,7 @@
                     }
                 }
 
+                // key
                 for (var i = 0; i < entities.key.length; i++) {
                     if (collectedEntity.x === entities.key[i].x && collectedEntity.y === entities.key[i].y) {
                         entities.key.splice(i, 1);
@@ -537,6 +648,12 @@
                 for (var i = 0; i < collectable.length; i++) {
                     if (collectedEntity.x === collectable[i].x && collectedEntity.y === collectable[i].y) {
                         collectable.splice(i, 1);
+                    }
+                }
+
+                for (var i = 0; i < shootable.length; i++) {
+                    if (collectedEntity.x === shootable[i].x && collectedEntity.y === shootable[i].y) {
+                        shootable.splice(i, 1);
                     }
                 }
 
@@ -576,14 +693,50 @@
                     }
                 }
 
-                playSound('door');
-
                 inventory.key--;
                 interaction = 'open';
+
+                playSound('door');
             }
             else {
                 interaction = 'collision';
             }
+        }
+
+        if (shootedEntity = inArray(moverPredictedPosition, shootable)) {
+            for (var i = 0; i < entities.rubble.length; i++) {
+                if (shootedEntity.x === entities.rubble[i].x && shootedEntity.y === entities.rubble[i].y) {
+                    entities.rubble.splice(i, 1);
+                }
+            }
+
+            for (var i = 0; i < entities.bomb.length; i++) {
+                if (shootedEntity.x === entities.bomb[i].x && shootedEntity.y === entities.bomb[i].y) {
+                    entities.bomb.splice(i, 1);
+                }
+            }
+
+            for (var i = 0; i < entities.ammo.length; i++) {
+                if (shootedEntity.x === entities.ammo[i].x && shootedEntity.y === entities.ammo[i].y) {
+                    entities.ammo.splice(i, 1);
+                }
+            }
+
+            for (var i = 0; i < collidable.length; i++) {
+                if (shootedEntity.x === collidable[i].x && shootedEntity.y === collidable[i].y) {
+                    collidable.splice(i, 1);
+                }
+            }
+
+            for (var i = 0; i < collectable.length; i++) {
+                if (shootedEntity.x === collectable[i].x && shootedEntity.y === collectable[i].y) {
+                    collectable.splice(i, 1);
+                }
+            }
+
+            interaction = 'shot';
+
+            playSound('smoke');
         }
 
         return interaction;
@@ -689,21 +842,86 @@
         playSound('teleport');
     }
 
+    function performShotSmoke(shootedEntity) {
+        var smokeStartEntity = {
+                x: shootedEntity.x,
+                y: shootedEntity.y,
+                f: 1    // framesCount
+            },
+            smokeEndEntity = {
+                x: shootedEntity.x,
+                y: shootedEntity.y,
+                f: 3    // framesCount
+            };
+
+        collidable[collidable.length] = smokeEndEntity;
+        entities.smokeEnd[entities.smokeEnd.length] = smokeEndEntity;
+
+        //tutaj trzeba usunac to co zestrzeliwujemy
+
+        window.setTimeout(function() {
+            collidable[collidable.length] = smokeStartEntity;
+            entities.smokeStart[entities.smokeStart.length] = smokeStartEntity;
+        }, repeatRate * 3);
+    }
+
+    function performShoot(shooter) {
+        var ammoAvailable = true,
+            axis = 'X',
+            shotEntity = {
+                x: shooter.x,
+                y: shooter.y,
+                s: true
+            };
+
+        if (shooter.p) {
+            shotEntity.d = shooter.d; // rifle direction
+
+            if (!inventory.ammo) {
+                ammoAvailable = false;
+            }
+        }
+
+        if (ammoAvailable) {
+            if (shotEntity.d === 'up' || shotEntity.d === 'down') {
+                axis = 'Y';
+            }
+
+            if (detectInteraction(shooter) !== 'collision') {
+                collidable[collidable.length] = shotEntity;
+                entities['shot' + axis][entities['shot' + axis].length] = shotEntity;
+            }
+
+            inventory.ammo--;
+
+            playSound('shot');
+        }
+    }
+
     function inputHandler(e) {
         e.preventDefault();
 
         if (repeatRateTimer == null && controlsEnabled) {
             repeatRateTimer = window.setTimeout(function() {
                 switch (e.keyCode) {
+                    case 16:  // Shift
+                        shiftPressed = true;
+                        break;
+
                     case 38:  // Up
                         setPlayerDirection('up');
 
-                        if (entities.player[0].y - 1 >= 1 && detectInteraction(entities.player[0]) !== 'collision') {
-                            entities.player[0].y -= 1;
-                            playerCollision = false;
+                        if (shiftPressed) {
+                            performShoot(entities.player[0]);
                         }
                         else {
-                            playerCollision = true;
+                            if (entities.player[0].y - 1 >= 1 && detectInteraction(entities.player[0]) !== 'collision') {
+                                entities.player[0].y -= 1;
+                                playerCollision = false;
+                            }
+                            else {
+                                playerCollision = true;
+                            }
                         }
 
                         break;
@@ -711,12 +929,17 @@
                     case 40:  // Down
                         setPlayerDirection('down');
 
-                        if (entities.player[0].y + 1 <= AREA_HEIGHT && detectInteraction(entities.player[0]) !== 'collision') {
-                            entities.player[0].y += 1;
-                            playerCollision = false;
+                        if (shiftPressed) {
+                            performShoot(entities.player[0]);
                         }
                         else {
-                            playerCollision = true;
+                            if (entities.player[0].y + 1 <= AREA_HEIGHT && detectInteraction(entities.player[0]) !== 'collision') {
+                                entities.player[0].y += 1;
+                                playerCollision = false;
+                            }
+                            else {
+                                playerCollision = true;
+                            }
                         }
 
                         break;
@@ -724,12 +947,17 @@
                     case 37:  // Left
                         setPlayerDirection('left');
 
-                        if (entities.player[0].x - 1 >= 1 && detectInteraction(entities.player[0]) !== 'collision') {
-                            entities.player[0].x -= 1;
-                            playerCollision = false;
+                        if (shiftPressed) {
+                            performShoot(entities.player[0]);
                         }
                         else {
-                            playerCollision = true;
+                            if (entities.player[0].x - 1 >= 1 && detectInteraction(entities.player[0]) !== 'collision') {
+                                entities.player[0].x -= 1;
+                                playerCollision = false;
+                            }
+                            else {
+                                playerCollision = true;
+                            }
                         }
 
                         break;
@@ -737,12 +965,17 @@
                     case 39:  // Right
                         setPlayerDirection('right');
 
-                        if (entities.player[0].x + 1 <= AREA_WIDTH && detectInteraction(entities.player[0]) !== 'collision') {
-                            entities.player[0].x += 1;
-                            playerCollision = false;
+                        if (shiftPressed) {
+                            performShoot(entities.player[0]);
                         }
                         else {
-                            playerCollision = true;
+                            if (entities.player[0].x + 1 <= AREA_WIDTH && detectInteraction(entities.player[0]) !== 'collision') {
+                                entities.player[0].x += 1;
+                                playerCollision = false;
+                            }
+                            else {
+                                playerCollision = true;
+                            }
                         }
 
                         break;
@@ -753,11 +986,20 @@
         }
     }
 
+    function shiftReleaseHandler(e) {
+        switch (e.keyCode) {
+            case 16:  // Shift
+                shiftPressed = false;
+                break;
+        }
+    }
+
     IMG.src = 'robbo.png';
     IMG.onload = function() {
         CANVAS.width = WIDTH * UNIT;
         CANVAS.height = HEIGHT * UNIT;
         CANVAS.addEventListener('keydown', inputHandler, true);
+        CANVAS.addEventListener('keyup', shiftReleaseHandler, true);
         CANVAS.focus();
 
         setLevel(1);
