@@ -435,7 +435,6 @@
                 }
             }
 
-
             if (interaction === 'collision' || interaction === 'shot') {
                 for (var i = 0; i < entities[type].length; i++) {
                     if (entity.x === entities[type][i].x && entity.y === entities[type][i].y) {
@@ -445,7 +444,7 @@
 
                 for (var i = 0; i < shootable.length; i++) {
                     if (entity.x === shootable[i].x && entity.y === shootable[i].y) {
-                        collidable.splice(i, 1);
+                        shootable.splice(i, 1);
                     }
                 }
 
@@ -533,14 +532,14 @@
 
         // monsters & movable lasers
         if (!mover.p && !mover.s) {
-            if (inArray(moverPredictedPosition, collidable) || inArray(moverPredictedPosition, movable)) { // look out for a bomb entity!
+            if (inArray(moverPredictedPosition, collidable) || inArray(moverPredictedPosition, movable)) {
                 interaction = 'collision';
             }
         }
         else {
             // shot
             if (mover.s) {
-                if (inArray(moverPredictedPosition, collidable) || (inArray(moverPredictedPosition, movable) && !inArray(moverPredictedPosition, shootable))) { // look out for a bomb entity!
+                if (inArray(moverPredictedPosition, collidable) || (inArray(moverPredictedPosition, movable) && !inArray(moverPredictedPosition, shootable))) {
                     interaction = 'collision';
                 }
 
@@ -704,39 +703,47 @@
         }
 
         if (shootedEntity = inArray(moverPredictedPosition, shootable)) {
-            for (var i = 0; i < entities.rubble.length; i++) {
-                if (shootedEntity.x === entities.rubble[i].x && shootedEntity.y === entities.rubble[i].y) {
-                    entities.rubble.splice(i, 1);
+            if (mover.s) {
+                for (var i = 0; i < entities.rubble.length; i++) {
+                    if (shootedEntity.x === entities.rubble[i].x && shootedEntity.y === entities.rubble[i].y) {
+                        entities.rubble.splice(i, 1);
+                    }
                 }
-            }
 
-            for (var i = 0; i < entities.bomb.length; i++) {
-                if (shootedEntity.x === entities.bomb[i].x && shootedEntity.y === entities.bomb[i].y) {
-                    entities.bomb.splice(i, 1);
+                for (var i = 0; i < entities.bomb.length; i++) {
+                    if (shootedEntity.x === entities.bomb[i].x && shootedEntity.y === entities.bomb[i].y) {
+                        entities.bomb.splice(i, 1);
+                    }
                 }
-            }
 
-            for (var i = 0; i < entities.ammo.length; i++) {
-                if (shootedEntity.x === entities.ammo[i].x && shootedEntity.y === entities.ammo[i].y) {
-                    entities.ammo.splice(i, 1);
+                for (var i = 0; i < entities.ammo.length; i++) {
+                    if (shootedEntity.x === entities.ammo[i].x && shootedEntity.y === entities.ammo[i].y) {
+                        entities.ammo.splice(i, 1);
+                    }
                 }
-            }
 
-            for (var i = 0; i < collidable.length; i++) {
-                if (shootedEntity.x === collidable[i].x && shootedEntity.y === collidable[i].y) {
-                    collidable.splice(i, 1);
+                for (var i = 0; i < collidable.length; i++) {
+                    if (shootedEntity.x === collidable[i].x && shootedEntity.y === collidable[i].y) {
+                        collidable.splice(i, 1);
+                    }
                 }
-            }
 
-            for (var i = 0; i < collectable.length; i++) {
-                if (shootedEntity.x === collectable[i].x && shootedEntity.y === collectable[i].y) {
-                    collectable.splice(i, 1);
+                for (var i = 0; i < collectable.length; i++) {
+                    if (shootedEntity.x === collectable[i].x && shootedEntity.y === collectable[i].y) {
+                        collectable.splice(i, 1);
+                    }
                 }
+
+                for (var i = 0; i < movable.length; i++) {
+                    if (shootedEntity.x === movable[i].x && shootedEntity.y === movable[i].y) {
+                        movable.splice(i, 1);
+                    }
+                }
+
+                interaction = 'shot';
+
+                playSound('smoke');
             }
-
-            interaction = 'shot';
-
-            playSound('smoke');
         }
 
         return interaction;
@@ -854,14 +861,32 @@
                 f: 3    // framesCount
             };
 
-        collidable[collidable.length] = smokeEndEntity;
-        entities.smokeEnd[entities.smokeEnd.length] = smokeEndEntity;
-
-        //tutaj trzeba usunac to co zestrzeliwujemy
+        collidable[collidable.length] = smokeStartEntity;
+        entities.smokeStart[entities.smokeStart.length] = smokeStartEntity;
 
         window.setTimeout(function() {
-            collidable[collidable.length] = smokeStartEntity;
-            entities.smokeStart[entities.smokeStart.length] = smokeStartEntity;
+            // we don't need do add smokeEnd to collidables because smokeStart already is with the same coordinates
+            entities.smokeEnd[entities.smokeEnd.length] = smokeEndEntity;
+
+            window.setTimeout(function() {
+                for (var i = 0; i < entities.smokeStart.length; i++) {
+                    if (shootedEntity.x === entities.smokeStart[i].x && shootedEntity.y === entities.smokeStart[i].y) {
+                        entities.smokeStart.splice(i, 1);
+                    }
+                }
+
+                for (var i = 0; i < entities.smokeEnd.length; i++) {
+                    if (shootedEntity.x === entities.smokeEnd[i].x && shootedEntity.y === entities.smokeEnd[i].y) {
+                        entities.smokeEnd.splice(i, 1);
+                    }
+                }
+
+                for (var i = 0; i < collidable.length; i++) {
+                    if (shootedEntity.x === collidable[i].x && shootedEntity.y === collidable[i].y) {
+                        collidable.splice(i, 1);
+                    }
+                }
+            }, repeatRate * 3);
         }, repeatRate * 3);
     }
 
@@ -887,10 +912,10 @@
                 axis = 'Y';
             }
 
-            if (detectInteraction(shooter) !== 'collision') {
+//            if (detectInteraction(shooter) !== 'collision') { // when uncommented, it makes unable to shoot entity right next to player
                 collidable[collidable.length] = shotEntity;
                 entities['shot' + axis][entities['shot' + axis].length] = shotEntity;
-            }
+//            }
 
             inventory.ammo--;
 
