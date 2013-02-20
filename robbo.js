@@ -436,9 +436,24 @@
             }
 
             if (interaction === 'collision' || interaction === 'shot') {
+                var searchedEntity = {};
+
                 for (var i = 0; i < entities[type].length; i++) {
                     if (entity.x === entities[type][i].x && entity.y === entities[type][i].y) {
                         entities[type].splice(i, 1);
+                    }
+                }
+
+                for (var i = 0; i < movable.length; i++) {
+                    if (entity.x === movable[i].x && entity.y === movable[i].y) {
+                        searchedEntity.x = entity.x;
+                        searchedEntity.y = entity.y;
+                    }
+                }
+
+                for (var i = 0; i < collidable.length; i++) {
+                    if (searchedEntity.x === collidable[i].x && searchedEntity.y === collidable[i].y) {
+                        collidable.splice(i, 1);
                     }
                 }
 
